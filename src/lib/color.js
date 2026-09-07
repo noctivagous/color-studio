@@ -20,7 +20,32 @@ import {
   getColorScale,
 } from './color-theory.js';
 
-export const SCHEMES = ALL_SCHEMES.filter((scheme) => scheme.id !== 'monochrome');
+export const SCHEMES = ALL_SCHEMES;
+
+/** @param {string} hex */
+export function hexToRgb(hex) {
+  const normalized = hex.replace('#', '');
+  return {
+    r: parseInt(normalized.slice(0, 2), 16),
+    g: parseInt(normalized.slice(2, 4), 16),
+    b: parseInt(normalized.slice(4, 6), 16),
+  };
+}
+
+/**
+ * @param {string} hex
+ * @param {'hsl'|'hex'|'rgb'} [format='hsl']
+ */
+export function formatColorValue(hex, format = 'hsl') {
+  const normalized = hex.startsWith('#') ? hex : `#${hex}`;
+  if (format === 'hex') return normalized.toLowerCase();
+  if (format === 'rgb') {
+    const { r, g, b } = hexToRgb(normalized);
+    return `rgb(${r} ${g} ${b})`;
+  }
+  const { h, s, l } = hexToHsl(normalized);
+  return `hsl(${Math.round(h)} ${Math.round(s)}% ${Math.round(l)}%)`;
+}
 
 export function schemeHueHexes(hex, scheme) {
   const hsl = hexToHsl(hex || '#8a8a8a');
@@ -30,6 +55,12 @@ export function schemeHueHexes(hex, scheme) {
 }
 
 export const SWATCH_SCALE_STEPS = 5;
+
+export const NEUTRAL_EXTREMES = Object.freeze([
+  { scale: 'white', hex: '#ffffff' },
+  { scale: 'black', hex: '#000000' },
+  { scale: 'gray', hex: '#808080' },
+]);
 
 /**
  * @param {string} baseColorHex
@@ -50,6 +81,9 @@ export function buildSwatchBoard(baseColorHex, scheme) {
       });
     });
   }
+  NEUTRAL_EXTREMES.forEach((extreme, hue) => {
+    cells.push({ scale: extreme.scale, hue, step: 0, hex: extreme.hex });
+  });
   const rowOf = (s) => cells.filter((cell) => cell.scale === s).map((cell) => cell.hex);
   return {
     hues: hues.length,
@@ -60,6 +94,7 @@ export function buildSwatchBoard(baseColorHex, scheme) {
       tint: rowOf('tint'),
       shade: rowOf('shade'),
       tone: rowOf('tone'),
+      extremes: NEUTRAL_EXTREMES.map((extreme) => extreme.hex),
     },
   };
 }

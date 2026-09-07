@@ -2,10 +2,8 @@
 // color-theory relationships. See product description.txt > FEATURE 1.
 import {
   normalizeThemeIntensity,
-  toneBand,
   toneCanvasLightness,
   toneIsDark,
-  toneModeBias,
 } from './tone-canvas.js';
 
 /** @param {string} hex e.g. "#7c3aed" */
@@ -76,6 +74,22 @@ export function hslToHex({ h, s, l }) {
       .padStart(2, '0');
 
   return `#${toHex(r)}${toHex(g)}${toHex(b)}`;
+}
+
+/**
+ * Apply a named palette treatment without changing the source hue.
+ * @param {string} hex
+ * @param {'tint'|'shade'|'tone'} type
+ * @param {number} amount 0–1
+ */
+export function applyColorTreatment(hex, type, amount) {
+  const source = hexToHsl(hex);
+  const factor = Math.max(0, Math.min(1, Number(amount) || 0));
+  let { s, l } = source;
+  if (type === 'tint') l += (100 - l) * factor;
+  if (type === 'shade') l *= 1 - factor;
+  if (type === 'tone') s *= 1 - factor;
+  return hslToHex({ ...source, s, l });
 }
 
 function relativeLuminance(hex) {
@@ -420,7 +434,9 @@ export function getColorScale(hex, type, steps = 5) {
   const { h, s, l } = hexToHsl(hex);
   const scale = [];
   for (let i = 0; i < steps; i++) {
-    const factor = i / (steps - 1);
+    // Skip the base (factor 0) and the pure extreme (factor 1). Five chromatic
+    // mixes; white / black / gray live on their own export row.
+    const factor = (i + 1) / (steps + 1);
     let newS = s;
     let newL = l;
 
@@ -687,9 +703,18 @@ export function deriveSurfaceLadder(backgroundHex, isDark, steps = 3) {
  * @param {'analog'|'complement'|'splitComplement'|'triadic'|'tetradic'|'monochrome'} scheme
  * @param {'light'|'light-gray'|'gray'|'dark-gray'|'dark'} [mode='dark']
  * @param {number} [intensity=0.5] 0–1 position in the tone band (0.5 = named tone)
+ * @param {number} [surfaceSaturation=0.4] 0–1 saturation multiplier for surfaces and controls
+ * @param {number} [textSaturation=0.35] 0–1 saturation multiplier for text roles
  * @returns {{ background: string, backgroundSecondary: string, surface: string, surfaceGui: string, surfaceContainers: string, text: string, muted: string, accent: string, link: string, linkHover: string, navLink: string, navLinkHover: string, border: string, focus: string, textOnBackgroundSecondary: string, textOnSurfaceGui: string, textOnSurfaceContainers: string, textOnGuiButton: string, textOnGuiInput: string, textOnGuiTextarea: string, textOnSurface0: string, textOnSurface1: string, textOnSurface2: string, isDark: boolean }}
  */
-export function buildPalette(baseColorHex, scheme, mode = 'dark', intensity = 0.5) {
+export function buildPalette(
+  baseColorHex,
+  scheme,
+  mode = 'dark',
+  intensity = 0.5,
+  surfaceSaturation = 0.4,
+  textSaturation = 0.35
+) {
   const base = hexToHsl(baseColorHex);
   const offsets = accentHueOffsets(scheme);
   // Relationship hues after the base. Spread later stops across chrome roles
@@ -700,45 +725,40 @@ export function buildPalette(baseColorHex, scheme, mode = 'dark', intensity = 0.
   const navLinkHue = relationshipHues[2] ?? relationshipHues[1] ?? accentHue;
   const focusHue = relationshipHues[1] ?? accentHue;
   const borderHue = relationshipHues[0] ?? base.h;
-  // Tone-only / monochrome themes must not introduce a saturated accent.
-  // A gray source has an arbitrary hue (usually 0°), which otherwise becomes
-  // orange/red when the regular accent rule enforces high saturation.
-  const relationshipSaturation = scheme === 'monochrome'
-    ? Math.min(base.s, 12)
-    : Math.max(base.s, 65);
-  const linkSaturation = scheme === 'monochrome'
-    ? Math.min(base.s, 12)
-    : Math.max(base.s, 60);
-  const borderSaturation = scheme === 'monochrome'
-    ? Math.min(base.s, 20)
-    : Math.min(Math.max(base.s, 28), 42);
+  const borderSaturation = Math.min(Math.max(base.s, 28), 42);
 
   const isDark = toneIsDark(mode);
   const t = normalizeThemeIntensity(intensity);
-  // Monochrome: the 5-stop Tone spectrum owns the canvas; picker L is a small nudge.
-  // Chromatic: picker H/S/L is the color; mode only biases lightness so a
-  // lime pick can still be lime (not a 25% gray-green).
-  let backgroundLightness;
-  if (scheme === 'monochrome') {
-    const band = toneBand(mode);
-    const tonalBase = toneCanvasLightness(mode, t);
-    const neutralOffset = (base.l - 50) * 0.24;
-    const lo = Math.min(band.lighter, band.darker);
-    const hi = Math.max(band.lighter, band.darker);
-    backgroundLightness = Math.max(lo, Math.min(hi, tonalBase + neutralOffset));
-  } else {
-    backgroundLightness = Math.max(4, Math.min(96, base.l + toneModeBias(mode)));
-  }
-  const backgroundSaturation = scheme === 'monochrome' ? Math.min(base.s, 8) : base.s;
-  const textLightness = isDark ? 92 : 12;
-  const mutedLightness = isDark ? 66 : 44;
-  const accentLightness = isDark ? 62 : 45;
-  const linkLightness = isDark ? 68 : 42;
+  const surfaceS = Math.max(0, Math.min(1, Number(surfaceSaturation) || 0));
+  const textS = Math.max(0, Math.min(1, Number(textSaturation) || 0));
+  // Tone owns the page canvas. The selected hue and saturation color that
+  // canvas, while intensity moves its lightness through the named band.
+  // In particular, Dark at 100% must reach a true black background.
+  const backgroundLightness = toneCanvasLightness(mode, t);
+  const backgroundSaturation = base.s * surfaceS;
+  const textRelationshipSaturation = Math.max(base.s, 65) * textS;
+  const textLinkSaturation = Math.max(base.s, 60) * textS;
+  // Move ink and chromatic roles with the tone as well. Contrast is checked
+  // again below for every surface, so these are tone-aware starting points,
+  // not hard-coded colors that can become unreadable.
+  const surfaceTreatment = isDark ? 'shade' : 'tint';
+  const inkTreatment = 'tone';
+  const treatmentProgress = isDark ? t : 1 - t;
+  const accentTreatmentAmount = 0.08 + treatmentProgress * 0.18;
+  const mutedTreatmentAmount = 0.22 + treatmentProgress * 0.2;
+  const toneLightness = (lightValue, darkValue) =>
+    isDark
+      ? lightValue + (darkValue - lightValue) * t
+      : darkValue + (lightValue - darkValue) * t;
+  const textLightness = toneLightness(8, 80);
+  const mutedLightness = toneLightness(38, 58);
+  const accentLightness = toneLightness(45, 54);
+  const linkLightness = toneLightness(42, 60);
   // Nav chrome prefers a later scheme stop (tetradic 4th / triadic 3rd) at a
   // distinct lightness so it stays in-scheme without matching body-link ink.
-  const navLinkLightness = isDark ? 74 : 36;
-  const borderLightness = isDark ? 22 : 84;
-  const focusLightness = isDark ? 74 : 50;
+  const navLinkLightness = toneLightness(36, 66);
+  const borderLightness = toneLightness(84, 18);
+  const focusLightness = toneLightness(50, 68);
 
   const background = hslToHex({
     h: base.h,
@@ -752,37 +772,63 @@ export function buildPalette(baseColorHex, scheme, mode = 'dark', intensity = 0.
   // (e.g. white post body vs #f2f2f2 meta strip vs darker secondary nav).
   const surfaceLadder = deriveSurfaceLadder(background, isDark, 3);
   const text = ensureContrast(
-    hslToHex({ h: base.h, s: Math.min(base.s, 10), l: textLightness }),
+    applyColorTreatment(
+      hslToHex({ h: base.h, s: Math.min(base.s, 10) * textS, l: textLightness }),
+      inkTreatment,
+      mutedTreatmentAmount
+    ),
     background,
     4.5
   );
   const muted = ensureContrast(
-    hslToHex({ h: base.h, s: Math.min(base.s, 12), l: mutedLightness }),
+    applyColorTreatment(
+      hslToHex({ h: base.h, s: Math.min(base.s, 12) * textS, l: mutedLightness }),
+      inkTreatment,
+      mutedTreatmentAmount
+    ),
     background,
     4.5
   );
   const accent = ensureContrast(
-    hslToHex({ h: accentHue, s: relationshipSaturation, l: accentLightness }),
+    applyColorTreatment(
+      hslToHex({ h: accentHue, s: textRelationshipSaturation, l: accentLightness }),
+      surfaceTreatment,
+      accentTreatmentAmount
+    ),
     background,
     4.5
   );
-  const link = ensureContrast(
-    hslToHex({ h: linkHue, s: linkSaturation, l: linkLightness }),
+  let link = ensureContrast(
+    applyColorTreatment(
+      hslToHex({ h: linkHue, s: textLinkSaturation, l: linkLightness }),
+      surfaceTreatment,
+      accentTreatmentAmount * 0.75
+    ),
     background,
     4.5
   );
-  const navLink = ensureContrast(
-    hslToHex({ h: navLinkHue, s: linkSaturation, l: navLinkLightness }),
+  if (sameHex(link, accent)) {
+    link = ensureContrast(deriveDistinctFill(link, [accent], isDark), background, 4.5);
+  }
+  let navLink = ensureContrast(
+    applyColorTreatment(
+      hslToHex({ h: navLinkHue, s: textLinkSaturation, l: navLinkLightness }),
+      surfaceTreatment,
+      accentTreatmentAmount * 0.6
+    ),
     background,
     4.5
   );
+  if (sameHex(navLink, link) || sameHex(navLink, accent)) {
+    navLink = ensureContrast(deriveDistinctFill(navLink, [link, accent], isDark), background, 4.5);
+  }
   const border = ensureContrast(
     hslToHex({ h: borderHue, s: borderSaturation, l: borderLightness }),
     background,
     3
   );
   const focus = ensureContrast(
-    hslToHex({ h: focusHue, s: relationshipSaturation, l: focusLightness }),
+    hslToHex({ h: focusHue, s: textRelationshipSaturation, l: focusLightness }),
     surfaceGui,
     3
   );

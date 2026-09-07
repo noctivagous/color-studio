@@ -1,5 +1,6 @@
 import { LitElement, html, css } from 'lit';
 import { SCHEMES } from '../lib/color.js';
+import { schemeCategoryIcon } from '../../../gmixer-chrome-extension/src/lib/scheme-category-icon.js';
 
 export class SchemePicker extends LitElement {
   static properties = {
@@ -12,7 +13,7 @@ export class SchemePicker extends LitElement {
     }
     .scheme-options {
       display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(132px, 1fr));
+      grid-template-columns: repeat(auto-fit, minmax(148px, 1fr));
       gap: 6px;
       align-content: start;
       width: 100%;
@@ -20,6 +21,9 @@ export class SchemePicker extends LitElement {
       margin: 0;
     }
     .scheme-option {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
       padding: 8px 6px;
       border: 1px solid rgba(255, 255, 255, 0.15);
       border-radius: 4px;
@@ -27,6 +31,14 @@ export class SchemePicker extends LitElement {
       color: inherit;
       cursor: pointer;
       font: 650 11px/1.2 system-ui, sans-serif;
+      text-align: left;
+    }
+    .scheme-option .scheme-icon {
+      display: block;
+      flex: 0 0 20px;
+      width: 20px;
+      height: 20px;
+      overflow: visible;
     }
     .scheme-option[aria-pressed='true'] {
       color: var(--gm-text, #f2eefc);
@@ -51,7 +63,8 @@ export class SchemePicker extends LitElement {
               aria-pressed=${this.scheme === scheme.id}
               @click=${() => this._select(scheme.id)}
             >
-              ${scheme.label}
+              ${schemeCategoryIcon(scheme.id)}
+              <span>${scheme.label}</span>
             </button>
           `
         )}

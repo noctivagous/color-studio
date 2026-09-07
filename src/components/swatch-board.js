@@ -1,11 +1,12 @@
 import { LitElement, html, css } from 'lit';
-import { buildSwatchBoard, swatchInk } from '../lib/color.js';
+import { buildSwatchBoard, formatColorValue, swatchInk } from '../lib/color.js';
 
 export class SwatchBoard extends LitElement {
   static properties = {
     baseColor: { type: String, attribute: 'base-color' },
     scheme: { type: String },
     mode: { type: String },
+    colorFormat: { type: String, attribute: 'color-format' },
     /** Hexes already in the user palette (lowercase). */
     palette: { type: Array },
     flashHex: { state: true },
@@ -26,12 +27,17 @@ export class SwatchBoard extends LitElement {
     }
     .swatch-mode {
       display: grid;
-      grid-template-columns: repeat(2, minmax(0, 1fr));
+      grid-template-columns: repeat(3, minmax(0, 1fr));
       overflow: hidden;
       border: 1px solid rgba(255, 255, 255, 0.15);
       border-radius: 6px;
       background: rgba(0, 0, 0, 0.18);
       min-width: min(100%, 280px);
+    }
+    .swatch-mode-label {
+      align-self: center;
+      color: var(--gm-muted, rgba(242, 238, 252, 0.7));
+      font: 650 11px/1.2 system-ui, sans-serif;
     }
     .swatch-mode-option {
       border: 0;
@@ -67,12 +73,12 @@ export class SwatchBoard extends LitElement {
       align-items: center;
     }
     .scale.scheme-colors {
-      gap: 8px;
+      gap: 2px;
     }
     .scheme-color-swatches {
       display: flex;
       flex: 1 1 auto;
-      gap: 1px;
+      gap: 2px;
       min-width: 0;
       background: rgba(255, 255, 255, 0.14);
     }
@@ -124,12 +130,17 @@ export class SwatchBoard extends LitElement {
       max-width: 100%;
     }
     .scale-label {
+      display: flex;
+      align-items: center;
+      justify-content: flex-end;
+      flex: 0 0 3.5rem;
+      width: 3.5rem;
       min-width: 3.5rem;
       color: var(--gm-muted, rgba(242, 238, 252, 0.55));
       font-size: 10px;
-    }
-    .scale-label.base-colors {
-      line-height: 1.15;
+      box-sizing: border-box;
+      padding: 4px;
+      border-radius: 2px;
       text-align: right;
     }
   `;
@@ -139,6 +150,7 @@ export class SwatchBoard extends LitElement {
     this.baseColor = '#7c3aed';
     this.scheme = 'analog';
     this.mode = 'copy';
+    this.colorFormat = 'hsl';
     this.palette = [];
     this.flashHex = '';
     this.flashLabel = '';
@@ -147,10 +159,18 @@ export class SwatchBoard extends LitElement {
   render() {
     const board = buildSwatchBoard(this.baseColor, this.scheme);
     const cellsFor = (scale) => board.cells.filter((cell) => cell.scale === scale);
-    const copyMode = this.mode !== 'palette';
+    const extremeFor = (scale) => cellsFor(scale)[0];
+    const copyMode = this.mode === 'copy';
     return html`
       <div class="toolbar">
+        <span class="swatch-mode-label">Click:</span>
         <div class="swatch-mode" role="group" aria-label="Swatch click mode">
+          <button
+            type="button"
+            class="swatch-mode-option"
+            aria-pressed=${this.mode === 'base'}
+            @click=${() => this._setMode('base')}
+          >Make Base Color</button>
           <button
             type="button"
             class="swatch-mode-option"
@@ -160,13 +180,15 @@ export class SwatchBoard extends LitElement {
           <button
             type="button"
             class="swatch-mode-option"
-            aria-pressed=${!copyMode}
+            aria-pressed=${this.mode === 'palette'}
             @click=${() => this._setMode('palette')}
           >Add to Palette</button>
         </div>
         <p class="hint">
-          ${copyMode
-            ? 'Click a swatch to copy its hex. Tint mixes toward white, shade toward black, tone desaturates.'
+          ${this.mode === 'base'
+            ? 'Click a tint, shade, or tone to make it the new base color for every scheme color.'
+            : copyMode
+            ? `Click a swatch to copy its ${this.colorFormat === 'hex' ? 'hex' : this.colorFormat.toUpperCase()} value. Tint, shade, and tone keep some of the base hue; white, black, and gray sit in the row below.`
             : 'Click a swatch to add it to your palette below Export. Duplicates are skipped.'}
         </p>
       </div>
@@ -178,15 +200,24 @@ export class SwatchBoard extends LitElement {
           </div>
         </div>
         <div class="scale">
-          <span class="scale-label">Tint</span>
+          <span
+            class="scale-label"
+            style="background:${extremeFor('white').hex};color:${swatchInk(extremeFor('white').hex)}"
+          >Tint</span>
           ${cellsFor('tint').map((cell) => this._cell(cell))}
         </div>
         <div class="scale">
-          <span class="scale-label">Shade</span>
+          <span
+            class="scale-label"
+            style="background:${extremeFor('black').hex};color:${swatchInk(extremeFor('black').hex)}"
+          >Shade</span>
           ${cellsFor('shade').map((cell) => this._cell(cell))}
         </div>
         <div class="scale">
-          <span class="scale-label">Tone</span>
+          <span
+            class="scale-label"
+            style="background:${extremeFor('gray').hex};color:${swatchInk(extremeFor('gray').hex)}"
+          >Tone</span>
           ${cellsFor('tone').map((cell) => this._cell(cell))}
         </div>
       </div>
@@ -196,6 +227,7 @@ export class SwatchBoard extends LitElement {
   _cell(cell) {
     const ink = swatchInk(cell.hex);
     const hex = cell.hex.toLowerCase();
+    const label = formatColorValue(hex, this.colorFormat);
     const flashing = this.flashHex === hex;
     const inPalette = (this.palette || []).includes(hex);
     return html`
@@ -204,10 +236,10 @@ export class SwatchBoard extends LitElement {
         class="swatch"
         data-in-palette=${inPalette}
         style="background:${cell.hex};color:${ink}"
-        title=${`${cell.scale} ${cell.hex}`}
+        title=${`${cell.scale} ${label}`}
         @click=${() => this._onSwatch(hex)}
       >
-        <span class="swatch-hex">${flashing ? this.flashLabel : cell.hex}</span>
+        <span class="swatch-hex">${flashing ? this.flashLabel : label}</span>
       </button>
     `;
   }
@@ -223,6 +255,17 @@ export class SwatchBoard extends LitElement {
   }
 
   async _onSwatch(hex) {
+    if (this.mode === 'base') {
+      this.dispatchEvent(
+        new CustomEvent('base-color-change', {
+          detail: { baseColor: hex },
+          bubbles: true,
+          composed: true,
+        })
+      );
+      this._flash(hex, 'new base');
+      return;
+    }
     if (this.mode === 'palette') {
       const already = (this.palette || []).includes(hex);
       this.dispatchEvent(
@@ -236,7 +279,7 @@ export class SwatchBoard extends LitElement {
       return;
     }
     try {
-      await navigator.clipboard.writeText(hex);
+      await navigator.clipboard.writeText(formatColorValue(hex, this.colorFormat));
     } catch {
       /* clipboard may be denied */
     }

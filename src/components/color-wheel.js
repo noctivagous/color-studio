@@ -19,6 +19,17 @@ export class ColorWheel extends LitElement {
       width: 100%;
       height: 100%;
       border-radius: 50%;
+      background: none;
+      position: relative;
+      cursor: crosshair;
+      touch-action: none;
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+    }
+    .wheel::before {
+      content: '';
+      position: absolute;
+      inset: 0;
+      border-radius: 50%;
       background: conic-gradient(
         from 0deg,
         #ff0000,
@@ -29,18 +40,18 @@ export class ColorWheel extends LitElement {
         #ff00ff,
         #ff0000
       );
-      position: relative;
-      cursor: crosshair;
-      touch-action: none;
-      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+      -webkit-mask-image: radial-gradient(closest-side, transparent 74%, #000 75.5%);
+      mask-image: radial-gradient(closest-side, transparent 74%, #000 75.5%);
+      pointer-events: none;
     }
     .wheel::after {
       content: '';
       position: absolute;
       inset: 20px;
-      background: var(--gm-bg, #14121a);
+      background: transparent;
       border-radius: 50%;
-      box-shadow: inset 0 2px 6px rgba(0, 0, 0, 0.5);
+      box-shadow: inset 0 2px 6px rgba(0, 0, 0, 0.45);
+      pointer-events: none;
     }
     .handle {
       position: absolute;

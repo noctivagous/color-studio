@@ -1,5 +1,5 @@
 import { LitElement, html, css } from 'lit';
-import { buildPalette, roleCssExport } from '../lib/color.js';
+import { buildPalette, formatColorValue, roleCssExport } from '../lib/color.js';
 
 export class ExportPreview extends LitElement {
   static properties = {
@@ -7,6 +7,9 @@ export class ExportPreview extends LitElement {
     scheme: { type: String },
     themeMode: { type: String, attribute: 'theme-mode' },
     themeIntensity: { type: Number, attribute: 'theme-intensity' },
+    surfaceSaturation: { type: Number, attribute: 'surface-saturation' },
+    textSaturation: { type: Number, attribute: 'text-saturation' },
+    colorFormat: { type: String, attribute: 'color-format' },
     copied: { state: true },
   };
 
@@ -67,6 +70,9 @@ export class ExportPreview extends LitElement {
     this.scheme = 'analog';
     this.themeMode = 'dark';
     this.themeIntensity = 0.5;
+    this.surfaceSaturation = 0.4;
+    this.textSaturation = 0.35;
+    this.colorFormat = 'hsl';
     this.copied = false;
   }
 
@@ -75,15 +81,20 @@ export class ExportPreview extends LitElement {
       this.baseColor,
       this.scheme,
       this.themeMode,
-      this.themeIntensity
+      this.themeIntensity,
+      this.surfaceSaturation,
+      this.textSaturation
     );
     const cssText = roleCssExport(palette);
+    const copyText = cssText.replace(/#[0-9a-fA-F]{6}/g, (hex) =>
+      formatColorValue(hex, this.colorFormat)
+    );
     return html`
       <p class="hint">
         CSS custom properties assigned to headers, body, links, GUI, and captions for this Tone.
       </p>
       <div class="export-actions">
-        <button type="button" @click=${() => this._copy(cssText)}>
+        <button type="button" @click=${() => this._copy(copyText)}>
           ${this.copied ? 'copied' : 'Copy CSS'}
         </button>
       </div>
@@ -94,7 +105,7 @@ export class ExportPreview extends LitElement {
   _colorize(text) {
     return text.split(/(#[0-9a-fA-F]{6})/g).map((part) => {
       if (/^#[0-9a-fA-F]{6}$/.test(part)) {
-        return html`<span class="export-hex" style="color:${part}">${part}</span>`;
+        return html`<span class="export-hex" style="color:${part}">${formatColorValue(part, this.colorFormat)}</span>`;
       }
       return part;
     });

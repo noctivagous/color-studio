@@ -1,6 +1,6 @@
 import { LitElement, html, css } from 'lit';
 import { getState, setState, subscribe, addToUserPalette, removeFromUserPalette, clearUserPalette } from '../state.js';
-import { boardExport, buildSwatchBoard, hexToHsl, swatchInk } from '../lib/color.js';
+import { boardExport, buildSwatchBoard, formatColorValue, schemeHueHexes, swatchInk } from '../lib/color.js';
 import './scheme-picker.js';
 import './color-wheel.js';
 import './hsl-sliders.js';
@@ -39,6 +39,7 @@ export class ColorStudioApp extends LitElement {
   static properties = {
     scheme: { state: true },
     baseColor: { state: true },
+    colorFormat: { state: true },
     copiedKind: { state: true },
     copiedPaletteHex: { state: true },
     exportKind: { state: true },
@@ -46,6 +47,8 @@ export class ColorStudioApp extends LitElement {
     userPalette: { state: true },
     themeMode: { state: true },
     themeIntensity: { state: true },
+    surfaceSaturation: { state: true },
+    textSaturation: { state: true },
   };
 
   static styles = css`
@@ -84,23 +87,43 @@ export class ColorStudioApp extends LitElement {
     .picker-fieldset {
       margin: 0;
       min-width: 0;
-      padding: 8px 8px 10px;
-      border: 1px solid rgba(255, 255, 255, 0.14);
-      border-radius: 8px;
-      background: rgba(0, 0, 0, 0.18);
+      padding: 10px 10px 12px;
+      border: 1px solid var(--gm-border, rgba(216, 198, 255, 0.2));
+      border-radius: 10px;
+      background: var(--gm-surface-raised, #211d2b);
       box-sizing: border-box;
+      box-shadow:
+        inset 0 1px 0 rgba(255, 255, 255, 0.045),
+        0 8px 24px rgba(0, 0, 0, 0.14);
+    }
+    .color-picker-flow > .picker-fieldset {
+      background: var(--gm-surface, #1b1823);
+      border-color: var(--gm-border-strong, rgba(216, 198, 255, 0.34));
     }
     .picker-group-fieldset {
       width: 100%;
+    }
+    .palette-maker {
+      display: grid;
+      gap: 12px;
     }
     .picker-fieldset legend {
       display: inline-flex;
       align-items: center;
       gap: 6px;
-      padding: 0 6px;
+      margin-left: 2px;
+      padding: 0 8px;
+      border: 1px solid var(--gm-border, rgba(216, 198, 255, 0.2));
+      border-radius: 999px;
+      background: var(--gm-surface, #1b1823);
       color: var(--gm-text, #f2eefc);
       font: 650 11px/1.2 system-ui, sans-serif;
       letter-spacing: 0.02em;
+      text-transform: uppercase;
+    }
+    .color-picker-flow > .picker-fieldset > legend {
+      border-color: var(--gm-border-strong, rgba(216, 198, 255, 0.34));
+      background: var(--gm-surface-raised, #211d2b);
     }
     .picker-step-index {
       display: grid;
@@ -157,14 +180,56 @@ export class ColorStudioApp extends LitElement {
       display: flex;
       flex-wrap: wrap;
       align-items: center;
-      gap: 10px;
+      gap: 12px 16px;
       margin: 0 0 16px;
+    }
+    .current-colors {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 8px;
+      min-width: 0;
+      flex: 1 1 220px;
+    }
+    .current-chip {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      min-width: 0;
     }
     .current-swatch {
       width: 28px;
       height: 28px;
       border-radius: 6px;
       border: 1px solid rgba(255, 255, 255, 0.2);
+      flex: 0 0 auto;
+    }
+    .value-format {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      overflow: hidden;
+      border: 1px solid rgba(255, 255, 255, 0.15);
+      border-radius: 6px;
+      background: rgba(0, 0, 0, 0.18);
+      flex: 0 0 auto;
+      margin-left: auto;
+    }
+    .value-format-option {
+      border: 0;
+      border-right: 1px solid rgba(255, 255, 255, 0.1);
+      background: transparent;
+      color: inherit;
+      cursor: pointer;
+      padding: 8px 12px;
+      font: 650 11px/1.2 system-ui, sans-serif;
+    }
+    .value-format-option:last-child {
+      border-right: 0;
+    }
+    .value-format-option[aria-pressed='true'] {
+      color: var(--gm-text, #f2eefc);
+      background: var(--gm-accent-soft, rgba(124, 58, 237, 0.28));
+      box-shadow: inset 0 -2px 0 var(--gm-accent, #7c3aed);
     }
     .current button,
     .export-actions button {
@@ -209,8 +274,8 @@ export class ColorStudioApp extends LitElement {
       overflow: auto;
       box-sizing: border-box;
       margin: 0;
-      background: rgba(0, 0, 0, 0.28);
-      border: 1px solid rgba(255, 255, 255, 0.14);
+      background: var(--gm-surface-inset, #100e15);
+      border: 1px solid var(--gm-border, rgba(216, 198, 255, 0.2));
       border-radius: 8px;
       color: var(--gm-muted, rgba(242, 238, 252, 0.75));
       font: 12px/1.4 ui-monospace, SFMono-Regular, Menlo, monospace;
@@ -243,13 +308,13 @@ export class ColorStudioApp extends LitElement {
       display: flex;
       flex-direction: column;
       justify-content: flex-end;
-      width: 72px;
+      width: 118px;
       min-height: 56px;
       padding: 6px;
       border: 1px solid rgba(255, 255, 255, 0.14);
       border-radius: 6px;
       box-sizing: border-box;
-      font: 650 10px/1.1 ui-monospace, SFMono-Regular, Menlo, monospace;
+      font: 650 10px/1.2 ui-monospace, SFMono-Regular, Menlo, monospace;
     }
     .palette-copy {
       flex: 1;
@@ -294,6 +359,7 @@ export class ColorStudioApp extends LitElement {
     const initial = getState();
     this.scheme = initial.scheme;
     this.baseColor = initial.baseColor;
+    this.colorFormat = initial.colorFormat;
     this.copiedKind = '';
     this.copiedPaletteHex = '';
     this.exportKind = 'css';
@@ -301,6 +367,8 @@ export class ColorStudioApp extends LitElement {
     this.userPalette = [...initial.userPalette];
     this.themeMode = initial.themeMode;
     this.themeIntensity = initial.themeIntensity;
+    this.surfaceSaturation = initial.surfaceSaturation;
+    this.textSaturation = initial.textSaturation;
   }
 
   connectedCallback() {
@@ -308,10 +376,13 @@ export class ColorStudioApp extends LitElement {
     this._unsub = subscribe((next) => {
       this.scheme = next.scheme;
       this.baseColor = next.baseColor;
+      this.colorFormat = next.colorFormat;
       this.swatchMode = next.swatchMode;
       this.userPalette = next.userPalette;
       this.themeMode = next.themeMode;
       this.themeIntensity = next.themeIntensity;
+      this.surfaceSaturation = next.surfaceSaturation;
+      this.textSaturation = next.textSaturation;
     });
   }
 
@@ -321,24 +392,40 @@ export class ColorStudioApp extends LitElement {
   }
 
   render() {
-    const hsl = hexToHsl(this.baseColor);
+    const schemeHexes = schemeHueHexes(this.baseColor, this.scheme);
     const board = buildSwatchBoard(this.baseColor, this.scheme);
     const exported = boardExport(board);
-    const exportText = this.exportKind === 'hex' ? exported.hexLines : exported.css;
+    const exportSource = this.exportKind === 'hex' ? exported.hexLines : exported.css;
+    const exportText = this._formattedExport(exportSource);
 
     return html`
       <h1>Color Studio</h1>
       <p class="lede">
         Pick a harmony, a hue, then saturation and lightness. Use the tint, shade, and tone
-        board for art and design direction. Nothing here talks to gMixer.
+        board for art and design direction.
       </p>
 
       <div class="current">
-        <span class="current-swatch" style="background:${this.baseColor}"></span>
-        <button type="button" @click=${() => this._copy(this.baseColor, 'base')}>
-          ${this.copiedKind === 'base' ? 'copied' : this.baseColor}
-        </button>
-        <span class="status">H ${Math.round(hsl.h)} · S ${Math.round(hsl.s)} · L ${Math.round(hsl.l)}</span>
+        <div class="current-colors">
+          ${schemeHexes.map((hex, index) => html`
+            <div class="current-chip">
+              <span class="current-swatch" style="background:${hex}"></span>
+              <button type="button" @click=${() => this._copy(formatColorValue(hex, this.colorFormat), `base-${index}`)}>
+                ${this.copiedKind === `base-${index}` ? 'copied' : formatColorValue(hex, this.colorFormat)}
+              </button>
+            </div>
+          `)}
+        </div>
+        <div class="value-format" role="group" aria-label="Color value format">
+          ${['hsl', 'hex', 'rgb'].map((format) => html`
+            <button
+              type="button"
+              class="value-format-option"
+              aria-pressed=${this.colorFormat === format}
+              @click=${() => setState({ colorFormat: format })}
+            >${format === 'hsl' ? 'HSL' : format === 'hex' ? 'Hex' : 'RGB'}</button>
+          `)}
+        </div>
       </div>
 
       <div class="color-picker-flow" aria-label="Color scheme pipeline">
@@ -379,9 +466,11 @@ export class ColorStudioApp extends LitElement {
             base-color=${this.baseColor}
             scheme=${this.scheme}
             mode=${this.swatchMode}
+            color-format=${this.colorFormat}
             .palette=${this.userPalette}
             @mode-change=${this._onSwatchMode}
             @palette-add=${this._onPaletteAdd}
+            @base-color-change=${this._onBaseColorChange}
             @hex-copied=${() => this._flash('swatch')}
           ></color-studio-swatches>
         </fieldset>
@@ -398,7 +487,7 @@ export class ColorStudioApp extends LitElement {
               ${this.copiedKind === 'export' ? 'copied' : 'Copy'}
             </button>
           </div>
-          <pre class="export-preview" aria-label="Palette export">${this._colorizeExport(exportText)}</pre>
+          <pre class="export-preview" aria-label="Palette export">${this._colorizeExport(exportSource)}</pre>
         </fieldset>
         <fieldset class="picker-fieldset picker-group-fieldset user-palette">
           <legend>User palette</legend>
@@ -406,8 +495,8 @@ export class ColorStudioApp extends LitElement {
             <button
               type="button"
               ?disabled=${this.userPalette.length === 0}
-              @click=${() => this._copy(this.userPalette.join('\n'), 'user-palette')}
-            >${this.copiedKind === 'user-palette' ? 'copied' : 'Copy hex list'}</button>
+              @click=${() => this._copy(this.userPalette.map((hex) => formatColorValue(hex, this.colorFormat)).join('\n'), 'user-palette')}
+            >${this.copiedKind === 'user-palette' ? 'copied' : 'Copy list'}</button>
             <button
               type="button"
               ?disabled=${this.userPalette.length === 0}
@@ -425,9 +514,9 @@ export class ColorStudioApp extends LitElement {
                     <button
                       type="button"
                       class="palette-copy"
-                      title=${`Copy ${hex}`}
+                      title=${`Copy ${formatColorValue(hex, this.colorFormat)}`}
                       @click=${() => this._copyPaletteChip(hex)}
-                    >${this.copiedPaletteHex === hex ? 'copied' : hex}</button>
+                    >${this.copiedPaletteHex === hex ? 'copied' : formatColorValue(hex, this.colorFormat)}</button>
                     <button
                       type="button"
                       class="palette-remove"
@@ -438,23 +527,34 @@ export class ColorStudioApp extends LitElement {
                 `)}
               </div>`}
         </fieldset>
-        <fieldset class="picker-fieldset picker-group-fieldset">
-          <legend>Tone</legend>
-          <color-studio-tone
-            theme-mode=${this.themeMode}
-            theme-intensity=${this.themeIntensity}
-            @tone-change=${this._onTone}
-            @intensity-change=${this._onIntensity}
-          ></color-studio-tone>
-        </fieldset>
-        <fieldset class="picker-fieldset picker-group-fieldset">
-          <legend>Live Preview</legend>
-          <color-studio-preview
-            base-color=${this.baseColor}
-            scheme=${this.scheme}
-            theme-mode=${this.themeMode}
-            theme-intensity=${this.themeIntensity}
-          ></color-studio-preview>
+        <fieldset class="picker-fieldset picker-group-fieldset palette-maker">
+          <legend>Web Page Color Palette Maker</legend>
+          <fieldset class="picker-fieldset">
+            <legend>Tone</legend>
+            <color-studio-tone
+              theme-mode=${this.themeMode}
+              base-color=${this.baseColor}
+              scheme=${this.scheme}
+              .themeIntensity=${this.themeIntensity}
+              .surfaceSaturation=${this.surfaceSaturation}
+              .textSaturation=${this.textSaturation}
+              @tone-change=${this._onTone}
+              @intensity-change=${this._onIntensity}
+              @surface-saturation-change=${this._onSurfaceSaturation}
+              @text-saturation-change=${this._onTextSaturation}
+            ></color-studio-tone>
+          </fieldset>
+          <fieldset class="picker-fieldset">
+            <legend>Live Preview</legend>
+            <color-studio-preview
+              base-color=${this.baseColor}
+              scheme=${this.scheme}
+              theme-mode=${this.themeMode}
+              .themeIntensity=${this.themeIntensity}
+              .surfaceSaturation=${this.surfaceSaturation}
+              .textSaturation=${this.textSaturation}
+            ></color-studio-preview>
+          </fieldset>
         </fieldset>
         <fieldset class="picker-fieldset picker-group-fieldset">
           <legend>Export Preview</legend>
@@ -462,7 +562,10 @@ export class ColorStudioApp extends LitElement {
             base-color=${this.baseColor}
             scheme=${this.scheme}
             theme-mode=${this.themeMode}
-            theme-intensity=${this.themeIntensity}
+            .themeIntensity=${this.themeIntensity}
+            .surfaceSaturation=${this.surfaceSaturation}
+            .textSaturation=${this.textSaturation}
+            color-format=${this.colorFormat}
           ></color-studio-role-export>
         </fieldset>
       </div>
@@ -477,12 +580,24 @@ export class ColorStudioApp extends LitElement {
     setState({ themeIntensity: event.detail.themeIntensity });
   }
 
+  _onSurfaceSaturation(event) {
+    setState({ surfaceSaturation: event.detail.surfaceSaturation });
+  }
+
+  _onTextSaturation(event) {
+    setState({ textSaturation: event.detail.textSaturation });
+  }
+
   _onSwatchMode(event) {
     setState({ swatchMode: event.detail.mode });
   }
 
   _onPaletteAdd(event) {
     addToUserPalette(event.detail.hex);
+  }
+
+  _onBaseColorChange(event) {
+    setState({ baseColor: event.detail.baseColor, swatchMode: 'base' });
   }
 
   _onScheme(event) {
@@ -497,14 +612,18 @@ export class ColorStudioApp extends LitElement {
     this.exportKind = kind;
   }
 
-  /** Wrap each #rrggbb so it renders in that color. */
+  /** Wrap each color so it renders in that color, using the active value format. */
   _colorizeExport(text) {
     return text.split(/(#[0-9a-fA-F]{6})/g).map((part) => {
       if (/^#[0-9a-fA-F]{6}$/.test(part)) {
-        return html`<span class="export-hex" style="color:${part}">${part}</span>`;
+        return html`<span class="export-hex" style="color:${part}">${formatColorValue(part, this.colorFormat)}</span>`;
       }
       return part;
     });
+  }
+
+  _formattedExport(text) {
+    return text.replace(/#[0-9a-fA-F]{6}/g, (hex) => formatColorValue(hex, this.colorFormat));
   }
 
   _flash(kind) {
@@ -518,7 +637,7 @@ export class ColorStudioApp extends LitElement {
 
   async _copyPaletteChip(hex) {
     this.copiedPaletteHex = hex;
-    await this._copy(hex, 'user-chip');
+    await this._copy(formatColorValue(hex, this.colorFormat), 'user-chip');
   }
 
   async _copy(text, kind) {

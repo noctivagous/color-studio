@@ -87,8 +87,8 @@ export function toneBand(mode) {
   return {
     id: stop.id,
     canonical: stop.l,
-    lighter: prev ? (prev.l + stop.l) / 2 : 99,
-    darker: next ? (stop.l + next.l) / 2 : 3,
+    lighter: prev ? (prev.l + stop.l) / 2 : 100,
+    darker: next ? (stop.l + next.l) / 2 : 0,
     scheme: stop.scheme,
     index: i,
   };

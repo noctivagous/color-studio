@@ -1,11 +1,16 @@
 import { LitElement, html, css } from 'lit';
 import { THEME_MODES } from '../lib/theme-modes.js';
 import { grayHexFromLightness, normalizeThemeIntensity, toneBand } from '../lib/tone-canvas.js';
+import { buildPalette, hexToHsl, hslToHex, schemeSliderHues } from '../lib/color.js';
 
 export class TonePicker extends LitElement {
   static properties = {
     themeMode: { type: String, attribute: 'theme-mode' },
     themeIntensity: { type: Number, attribute: 'theme-intensity' },
+    surfaceSaturation: { type: Number, attribute: 'surface-saturation' },
+    textSaturation: { type: Number, attribute: 'text-saturation' },
+    baseColor: { type: String, attribute: 'base-color' },
+    scheme: { type: String },
   };
 
   static styles = css`
@@ -70,6 +75,19 @@ export class TonePicker extends LitElement {
       font: 10px/1.25 system-ui, sans-serif;
       opacity: 0.72;
     }
+    .tone-preview-swatches {
+      display: flex;
+      width: 100%;
+      height: 8px;
+      gap: 2px;
+      margin-top: 2px;
+    }
+    .tone-preview-swatch {
+      flex: 1 1 0;
+      min-width: 0;
+      border: 1px solid rgba(255, 255, 255, 0.35);
+      border-radius: 2px;
+    }
     .grayscale-control {
       display: grid;
       gap: 8px;
@@ -92,6 +110,68 @@ export class TonePicker extends LitElement {
       border: 1px solid rgba(255, 255, 255, 0.16);
       border-radius: 999px;
     }
+    .scheme-saturation-control {
+      display: grid;
+      gap: 6px;
+      width: 100%;
+    }
+    .scheme-saturation-track {
+      position: relative;
+      display: grid;
+      grid-template-columns: repeat(var(--scheme-saturation-count, 1), minmax(0, 1fr));
+      height: 24px;
+      overflow: hidden;
+      border: 1px solid rgba(255, 255, 255, 0.16);
+      border-radius: 4px;
+    }
+    .scheme-saturation-preview {
+      min-width: 0;
+      border-right: 1px solid rgba(255, 255, 255, 0.22);
+    }
+    .scheme-saturation-preview:last-of-type {
+      border-right: 0;
+    }
+    .scheme-saturation-track input {
+      position: absolute;
+      inset: 0;
+      z-index: 1;
+      width: 100%;
+      height: 100%;
+      margin: 0;
+      appearance: none;
+      -webkit-appearance: none;
+      background: transparent;
+      border: 0;
+      padding: 0;
+      cursor: pointer;
+    }
+    .scheme-saturation-track input::-webkit-slider-runnable-track {
+      height: 100%;
+      background: transparent;
+    }
+    .scheme-saturation-track input::-webkit-slider-thumb {
+      appearance: none;
+      -webkit-appearance: none;
+      width: 8px;
+      height: 28px;
+      margin-top: -2px;
+      border: 1px solid #fff;
+      border-radius: 2px;
+      background: rgba(255, 255, 255, 0.9);
+      box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.45);
+    }
+    .scheme-saturation-track input::-moz-range-track {
+      height: 100%;
+      background: transparent;
+    }
+    .scheme-saturation-track input::-moz-range-thumb {
+      width: 8px;
+      height: 28px;
+      border: 1px solid #fff;
+      border-radius: 2px;
+      background: rgba(255, 255, 255, 0.9);
+      box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.45);
+    }
     .hint {
       margin: 0;
       font-size: 10px;
@@ -103,10 +183,16 @@ export class TonePicker extends LitElement {
     super();
     this.themeMode = 'dark';
     this.themeIntensity = 0.5;
+    this.surfaceSaturation = 0.4;
+    this.textSaturation = 0.35;
+    this.baseColor = '#7c3aed';
+    this.scheme = 'analog';
   }
 
   render() {
     const intensity = normalizeThemeIntensity(this.themeIntensity);
+    const surfaceSaturation = Math.max(0, Math.min(1, Number(this.surfaceSaturation) || 0));
+    const textSaturation = Math.max(0, Math.min(1, Number(this.textSaturation) || 0));
     const band = toneBand(this.themeMode);
     const intensityTrack = `background:linear-gradient(to right, ${grayHexFromLightness(band.lighter)}, ${grayHexFromLightness(band.darker)})`;
     return html`
@@ -124,6 +210,12 @@ export class TonePicker extends LitElement {
               >
                 <span class="tone-name">${mode.label}</span>
                 <span class="tone-caption">${mode.description}</span>
+                ${this._renderTonePreview(
+                  mode.id,
+                  intensity,
+                  surfaceSaturation,
+                  textSaturation
+                )}
               </button>
             `
           )}
@@ -144,11 +236,87 @@ export class TonePicker extends LitElement {
           />
           <span class="grayscale-track" style=${intensityTrack} aria-hidden="true"></span>
         </label>
+        ${this._renderSchemeSaturationControl('Surface saturation', surfaceSaturation, 'surface')}
+        ${this._renderSchemeSaturationControl('Text saturation', textSaturation, 'text')}
         <p class="hint">
-          Light through Dark sets the preview surface direction. Intensity moves within that tone.
-          The hue wheel is unchanged.
+          Tone controls surface lightness. The saturation previews show every hue in the selected
+          scheme; the hue wheel is unchanged.
         </p>
       </div>
+    `;
+  }
+
+  _renderSchemeSaturationControl(label, value, kind) {
+    const amount = Math.max(0, Math.min(1, Number(value) || 0));
+    const source = hexToHsl(this.baseColor || '#7c3aed');
+    const hues = schemeSliderHues(this.baseColor, this.scheme);
+    const setter = kind === 'surface' ? this._setSurfaceSaturation : this._setTextSaturation;
+    return html`
+      <label class="scheme-saturation-control">
+        <span class="grayscale-control-header">
+          <span>${label}</span>
+          <output>${Math.round(amount * 100)}%</output>
+        </span>
+        <span
+          class="scheme-saturation-track"
+          style="--scheme-saturation-count:${hues.length}"
+        >
+          ${hues.map((hue) => html`
+            <span
+              class="scheme-saturation-preview"
+              style="background:${hslToHex({ h: hue, s: amount * 100, l: source.l })}"
+              aria-hidden="true"
+            ></span>
+          `)}
+          <input
+            type="range"
+            min="0"
+            max="1"
+            step="0.01"
+            .value=${String(amount)}
+            aria-valuemin="0"
+            aria-valuemax="1"
+            aria-valuenow=${String(amount)}
+            aria-label=${label}
+            @input=${(event) => setter.call(this, event.target.value)}
+          />
+        </span>
+      </label>
+    `;
+  }
+
+  _renderTonePreview(mode, intensity, surfaceSaturation, textSaturation) {
+    const palette = buildPalette(
+      this.baseColor,
+      this.scheme,
+      mode,
+      intensity,
+      surfaceSaturation,
+      textSaturation
+    );
+    return html`
+      <span class="tone-preview-swatches" aria-label="Tone color preview">
+        <span
+          class="tone-preview-swatch"
+          style="background:${palette.background}"
+          title="Background"
+        ></span>
+        <span
+          class="tone-preview-swatch"
+          style="background:${palette.surfaceContainers}"
+          title="Surface"
+        ></span>
+        <span
+          class="tone-preview-swatch"
+          style="background:${palette.text}"
+          title="Text"
+        ></span>
+        <span
+          class="tone-preview-swatch"
+          style="background:${palette.accent}"
+          title="Accent"
+        ></span>
+      </span>
     `;
   }
 
@@ -166,6 +334,26 @@ export class TonePicker extends LitElement {
     this.dispatchEvent(
       new CustomEvent('intensity-change', {
         detail: { themeIntensity: normalizeThemeIntensity(value) },
+        bubbles: true,
+        composed: true,
+      })
+    );
+  }
+
+  _setSurfaceSaturation(value) {
+    this.dispatchEvent(
+      new CustomEvent('surface-saturation-change', {
+        detail: { surfaceSaturation: Math.max(0, Math.min(1, Number(value))) },
+        bubbles: true,
+        composed: true,
+      })
+    );
+  }
+
+  _setTextSaturation(value) {
+    this.dispatchEvent(
+      new CustomEvent('text-saturation-change', {
+        detail: { textSaturation: Math.max(0, Math.min(1, Number(value))) },
         bubbles: true,
         composed: true,
       })

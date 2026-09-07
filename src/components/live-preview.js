@@ -47,6 +47,8 @@ export class LivePreview extends LitElement {
     scheme: { type: String },
     themeMode: { type: String, attribute: 'theme-mode' },
     themeIntensity: { type: Number, attribute: 'theme-intensity' },
+    surfaceSaturation: { type: Number, attribute: 'surface-saturation' },
+    textSaturation: { type: Number, attribute: 'text-saturation' },
   };
 
   static styles = css`
@@ -364,6 +366,8 @@ export class LivePreview extends LitElement {
     this.scheme = 'analog';
     this.themeMode = 'dark';
     this.themeIntensity = 0.5;
+    this.surfaceSaturation = 0.4;
+    this.textSaturation = 0.35;
   }
 
   render() {
@@ -371,7 +375,9 @@ export class LivePreview extends LitElement {
       this.baseColor,
       this.scheme,
       this.themeMode,
-      this.themeIntensity
+      this.themeIntensity,
+      this.surfaceSaturation,
+      this.textSaturation
     );
     return html`
       <div class="theme-preview">
