@@ -63,11 +63,35 @@ export const NEUTRAL_EXTREMES = Object.freeze([
 ]);
 
 /**
+ * Apply one tint, shade, or tone step to a color without changing its hue.
+ * @param {string} hex
+ * @param {'tint'|'shade'|'tone'} scale
+ * @param {number} step
+ */
+export function applyColorScaleStep(hex, scale, step) {
+  const [result] = getColorScale(hex, scale, Math.max(SWATCH_SCALE_STEPS, step + 1))
+    .slice(step, step + 1);
+  return result || hex;
+}
+
+/**
  * @param {string} baseColorHex
  * @param {string} scheme
+ * @param {{ saturation: number, lightness: number }|null} [hslTreatment]
  */
-export function buildSwatchBoard(baseColorHex, scheme) {
-  const hues = schemeHueHexes(baseColorHex, scheme);
+export function buildSwatchBoard(baseColorHex, scheme, hslTreatment = null) {
+  const baseHues = schemeHueHexes(baseColorHex, scheme);
+  const hues = hslTreatment
+    ? baseHues.map((hex, index) => {
+        if (index === 0) return hex;
+        const hsl = hexToHsl(hex);
+        return hslToHex({
+          ...hsl,
+          s: hslTreatment.saturation,
+          l: hslTreatment.lightness,
+        });
+      })
+    : baseHues;
   const steps = SWATCH_SCALE_STEPS;
   /** @type {{ scale: string, hue: number, step: number, hex: string }[]} */
   const cells = [];

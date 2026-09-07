@@ -5,6 +5,7 @@ const DEFAULT_STATE = Object.freeze({
   colorFormat: 'hsl',
   /** @type {'copy'|'palette'|'base'} */
   swatchMode: 'base',
+  showSwatchValues: true,
   /** @type {string[]} */
   userPalette: [],
   /** @type {'light'|'light-gray'|'gray'|'dark-gray'|'dark'} */
@@ -26,7 +27,7 @@ export function subscribe(listener) {
   return () => listeners.delete(listener);
 }
 
-/** @param {Partial<{ scheme: string, baseColor: string, colorFormat: 'hsl'|'hex'|'rgb', swatchMode: 'copy'|'palette'|'base', userPalette: string[], themeMode: string, themeIntensity: number, surfaceSaturation: number, textSaturation: number }>} patch */
+/** @param {Partial<{ scheme: string, baseColor: string, colorFormat: 'hsl'|'hex'|'rgb', swatchMode: 'copy'|'palette'|'base', showSwatchValues: boolean, userPalette: string[], themeMode: string, themeIntensity: number, surfaceSaturation: number, textSaturation: number }>} patch */
 export function setState(patch) {
   state = { ...state, ...patch };
   for (const listener of listeners) listener(state);

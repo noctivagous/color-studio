@@ -1,6 +1,13 @@
 import { LitElement, html, css } from 'lit';
 import { getState, setState, subscribe, addToUserPalette, removeFromUserPalette, clearUserPalette } from '../state.js';
-import { boardExport, buildSwatchBoard, formatColorValue, schemeHueHexes, swatchInk } from '../lib/color.js';
+import {
+  applyColorScaleStep,
+  boardExport,
+  buildSwatchBoard,
+  formatColorValue,
+  schemeHueHexes,
+  swatchInk,
+} from '../lib/color.js';
 import './scheme-picker.js';
 import './color-wheel.js';
 import './hsl-sliders.js';
@@ -44,6 +51,7 @@ export class ColorStudioApp extends LitElement {
     copiedPaletteHex: { state: true },
     exportKind: { state: true },
     swatchMode: { state: true },
+    showSwatchValues: { state: true },
     userPalette: { state: true },
     themeMode: { state: true },
     themeIntensity: { state: true },
@@ -364,6 +372,7 @@ export class ColorStudioApp extends LitElement {
     this.copiedPaletteHex = '';
     this.exportKind = 'css';
     this.swatchMode = initial.swatchMode;
+    this.showSwatchValues = initial.showSwatchValues;
     this.userPalette = [...initial.userPalette];
     this.themeMode = initial.themeMode;
     this.themeIntensity = initial.themeIntensity;
@@ -378,6 +387,7 @@ export class ColorStudioApp extends LitElement {
       this.baseColor = next.baseColor;
       this.colorFormat = next.colorFormat;
       this.swatchMode = next.swatchMode;
+      this.showSwatchValues = next.showSwatchValues;
       this.userPalette = next.userPalette;
       this.themeMode = next.themeMode;
       this.themeIntensity = next.themeIntensity;
@@ -467,8 +477,10 @@ export class ColorStudioApp extends LitElement {
             scheme=${this.scheme}
             mode=${this.swatchMode}
             color-format=${this.colorFormat}
+            .showValues=${this.showSwatchValues}
             .palette=${this.userPalette}
             @mode-change=${this._onSwatchMode}
+            @values-change=${this._onSwatchValues}
             @palette-add=${this._onPaletteAdd}
             @base-color-change=${this._onBaseColorChange}
             @hex-copied=${() => this._flash('swatch')}
@@ -592,12 +604,21 @@ export class ColorStudioApp extends LitElement {
     setState({ swatchMode: event.detail.mode });
   }
 
+  _onSwatchValues(event) {
+    setState({ showSwatchValues: event.detail.showValues });
+  }
+
   _onPaletteAdd(event) {
     addToUserPalette(event.detail.hex);
   }
 
   _onBaseColorChange(event) {
-    setState({ baseColor: event.detail.baseColor, swatchMode: 'base' });
+    const { baseColor, scale, step } = event.detail;
+    const nextBaseColor =
+      scale === 'tint' || scale === 'shade' || scale === 'tone'
+        ? applyColorScaleStep(this.baseColor, scale, step)
+        : baseColor;
+    setState({ baseColor: nextBaseColor, swatchMode: 'base' });
   }
 
   _onScheme(event) {

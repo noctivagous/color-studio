@@ -499,37 +499,43 @@ export function deriveDistinctFill(fromHex, avoidHexes = [], isDark = hexToHsl(f
 }
 
 /**
- * Auto GUI control fills that stay on the Color Scheme ladder but do not
- * copy Surface:GUI / Surface:Containers (those are the usual parent sheets).
+ * Auto GUI control fills that stay in the same light/dark context as the
+ * page background while keeping inputs, textareas, and buttons distinct.
  *
  * @param {{ background: string, backgroundSecondary: string, surfaceGui: string, surfaceContainers: string, accent?: string, isDark: boolean }} layers
  */
 export function deriveGuiControlFills(layers) {
   const isDark = Boolean(layers.isDark);
-  const dir = isDark ? 1 : -1;
   const avoid = [
     layers.background,
-    layers.backgroundSecondary,
-    layers.surfaceGui,
-    layers.surfaceContainers,
   ].filter(Boolean);
-  const guiInput = spreadFillFrom(layers.background, avoid, dir, 12);
-  let guiTextarea = spreadFillFrom(guiInput, [...avoid, guiInput], dir, 14);
+  const guiInput = deriveContextualControlFill(layers.background, isDark, 10, avoid);
+  let guiTextarea = deriveContextualControlFill(
+    layers.background,
+    isDark,
+    16,
+    [...avoid, guiInput]
+  );
   if (guiFillsCollide(guiTextarea, guiInput)) {
-    guiTextarea = spreadFillFrom(guiInput, [...avoid, guiInput], -dir, 14);
+    guiTextarea = deriveContextualControlFill(
+      layers.background,
+      isDark,
+      22,
+      [...avoid, guiInput]
+    );
   }
-  let guiButton = spreadFillFrom(
-    layers.surfaceGui,
-    [...avoid, guiInput, guiTextarea],
-    dir,
-    16
+  let guiButton = deriveContextualControlFill(
+    layers.background,
+    isDark,
+    22,
+    [...avoid, guiInput, guiTextarea]
   );
   if (guiFillsCollide(guiButton, guiInput) || guiFillsCollide(guiButton, guiTextarea)) {
-    guiButton = spreadFillFrom(
-      layers.surfaceGui,
-      [...avoid, guiInput, guiTextarea],
-      -dir,
-      16
+    guiButton = deriveContextualControlFill(
+      layers.background,
+      isDark,
+      28,
+      [...avoid, guiInput, guiTextarea]
     );
   }
   const guiSlider = layers.accent || guiButton;
@@ -558,13 +564,21 @@ function spreadFillFrom(fromHex, avoidHexes, dir, delta) {
   return deriveDistinctFill(shifted, avoidHexes, dir > 0);
 }
 
-const GUI_FILL_DELTA_SECONDARY = 10;
-const GUI_FILL_DELTA_CONTAINERS = 14;
+function deriveContextualControlFill(parentHex, isDark, delta, avoidHexes) {
+  const parent = hexToHsl(parentHex);
+  const direction = isDark ? 1 : -1;
+  const shifted = hslToHex({
+    ...parent,
+    l: Math.max(6, Math.min(94, parent.l + direction * delta)),
+  });
+  return deriveDistinctFill(shifted, avoidHexes, isDark);
+}
+
 const GUI_BORDER_DELTA = 8;
 
 /**
- * Same hue/saturation; step lightness away from the parent fill
- * (darker on lighter, lighter on darker).
+ * Keep a control in the parent's light/dark context while preserving its
+ * role-specific distance from the primary body surface.
  * @param {string} hex
  * @param {string} parentHex
  * @param {number} delta
@@ -572,10 +586,11 @@ const GUI_BORDER_DELTA = 8;
 export function restyleHexAgainstParent(hex, parentHex, delta) {
   const src = hexToHsl(hex);
   const parent = hexToHsl(parentHex);
-  const dir = parent.l >= src.l ? -1 : 1;
+  const dir = parent.l < 50 ? 1 : -1;
+  const sourceDelta = Math.max(8, Math.abs(src.l - parent.l));
   let next = hslToHex({
     ...src,
-    l: Math.max(6, Math.min(94, src.l + dir * delta)),
+    l: Math.max(6, Math.min(94, parent.l + dir * (sourceDelta + delta))),
   });
   if (fillsTooClose(next, parentHex)) {
     next = deriveDistinctFill(next, [parentHex], parent.l < 50);
@@ -608,22 +623,26 @@ export function deriveGuiControlBorders(border, fills, isDark) {
 }
 
 /**
- * Assigned fill/border is the BG:Primary look. Secondary and Containers are
- * hardcoded restyles of that assignment — not extra swatch chips.
+ * Assigned fill/border is the BG:Primary look. Secondary and Containers get
+ * the same role-specific control treatment against their own parent surface.
  * @param {string} assignedFill
  * @param {string} assignedBorder
  * @param {{ backgroundSecondary: string, surfaceContainers: string }} parents
+ * @param {boolean} isDark
+ * @param {number} roleDelta
  */
-export function guiControlOnParents(assignedFill, assignedBorder, parents) {
-  const secondaryFill = restyleHexAgainstParent(
-    assignedFill,
+export function guiControlOnParents(assignedFill, assignedBorder, parents, isDark, roleDelta) {
+  const secondaryFill = deriveContextualControlFill(
     parents.backgroundSecondary,
-    GUI_FILL_DELTA_SECONDARY
+    isDark,
+    roleDelta,
+    [parents.backgroundSecondary]
   );
-  const containersFill = restyleHexAgainstParent(
-    assignedFill,
+  const containersFill = deriveContextualControlFill(
     parents.surfaceContainers,
-    GUI_FILL_DELTA_CONTAINERS
+    isDark,
+    roleDelta,
+    [parents.surfaceContainers]
   );
   const secondaryBorder = ensureContrast(
     restyleHexAgainstParent(assignedBorder, parents.backgroundSecondary, GUI_BORDER_DELTA),
@@ -698,6 +717,13 @@ export function deriveSurfaceLadder(backgroundHex, isDark, steps = 3) {
   return ladder;
 }
 
+function capSurfaceLightness(hex, maximumLightness) {
+  const color = hexToHsl(hex);
+  return color.l <= maximumLightness
+    ? hex
+    : hslToHex({ ...color, l: maximumLightness });
+}
+
 /**
  * @param {string} baseColorHex
  * @param {'analog'|'complement'|'splitComplement'|'triadic'|'tetradic'|'monochrome'} scheme
@@ -765,9 +791,15 @@ export function buildPalette(
     s: backgroundSaturation,
     l: backgroundLightness,
   });
-  const backgroundSecondary = deriveSurface(background, isDark);
-  const surfaceGui = deriveSurface(backgroundSecondary, isDark);
-  const surfaceContainers = deriveSurface(surfaceGui, isDark);
+  // Gray keeps dark-context ink, but its surfaces must remain a mid-tone.
+  // Without these caps, three dark-mode elevation steps push Gray's cards
+  // into Light Gray / Light territory.
+  const graySurfaceCap = mode === 'gray' ? backgroundLightness + 16 : null;
+  const capGraySurface = (surface, step) =>
+    graySurfaceCap == null ? surface : capSurfaceLightness(surface, backgroundLightness + step);
+  const backgroundSecondary = capGraySurface(deriveSurface(background, isDark), 6);
+  const surfaceGui = capGraySurface(deriveSurface(backgroundSecondary, isDark), 8);
+  const surfaceContainers = capGraySurface(deriveSurface(surfaceGui, isDark), 10);
   // Three ranked elevated stops for preserving on-page tonal steps
   // (e.g. white post body vs #f2f2f2 meta strip vs darker secondary nav).
   const surfaceLadder = deriveSurfaceLadder(background, isDark, 3);
@@ -850,15 +882,15 @@ export function buildPalette(
   const guiOn = {
     ...flattenGuiControlOnParents(
       'guiButton',
-      guiControlOnParents(guiButton, primaryBorders.guiButtonBorder, guiParents)
+      guiControlOnParents(guiButton, primaryBorders.guiButtonBorder, guiParents, isDark, 22)
     ),
     ...flattenGuiControlOnParents(
       'guiInput',
-      guiControlOnParents(guiInput, primaryBorders.guiInputBorder, guiParents)
+      guiControlOnParents(guiInput, primaryBorders.guiInputBorder, guiParents, isDark, 10)
     ),
     ...flattenGuiControlOnParents(
       'guiTextarea',
-      guiControlOnParents(guiTextarea, primaryBorders.guiTextareaBorder, guiParents)
+      guiControlOnParents(guiTextarea, primaryBorders.guiTextareaBorder, guiParents, isDark, 16)
     ),
   };
 
