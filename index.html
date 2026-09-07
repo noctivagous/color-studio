@@ -1,0 +1,30 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Color Studio</title>
+    <style>
+      :root {
+        --gm-bg: #14121a;
+        --gm-text: #f2eefc;
+        --gm-muted: rgba(242, 238, 252, 0.65);
+        --gm-accent: #7c3aed;
+        --gm-accent-soft: rgba(124, 58, 237, 0.28);
+        --gm-space-2: 16px;
+      }
+      html,
+      body {
+        margin: 0;
+        min-height: 100%;
+        background: var(--gm-bg);
+        color: var(--gm-text);
+        font: 14px/1.4 system-ui, sans-serif;
+      }
+    </style>
+  </head>
+  <body>
+    <color-studio-app></color-studio-app>
+    <script type="module" src="/src/main.js"></script>
+  </body>
+</html>

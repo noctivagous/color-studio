@@ -1,0 +1,19 @@
+{
+  "name": "color-studio",
+  "version": "0.1.0",
+  "description": "Standalone color wheel, schemes, and tint/shade/tone swatches for art and design direction.",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "start": "vite",
+    "build": "vite build",
+    "preview": "vite preview"
+  },
+  "dependencies": {
+    "lit": "^3.2.0"
+  },
+  "devDependencies": {
+    "vite": "^6.0.0"
+  }
+}
