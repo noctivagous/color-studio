@@ -118,18 +118,20 @@ export class TonePicker extends LitElement {
     .scheme-saturation-track {
       position: relative;
       display: grid;
-      grid-template-columns: repeat(var(--scheme-saturation-count, 1), minmax(0, 1fr));
-      height: 24px;
+      grid-template-rows: repeat(var(--scheme-saturation-count, 1), minmax(0, 1fr));
+      min-height: 24px;
+      height: calc(var(--scheme-saturation-count, 1) * 10px);
       overflow: hidden;
       border: 1px solid rgba(255, 255, 255, 0.16);
       border-radius: 4px;
     }
     .scheme-saturation-preview {
       min-width: 0;
-      border-right: 1px solid rgba(255, 255, 255, 0.22);
+      min-height: 0;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.22);
     }
     .scheme-saturation-preview:last-of-type {
-      border-right: 0;
+      border-bottom: 0;
     }
     .scheme-saturation-track input {
       position: absolute;
@@ -187,6 +189,7 @@ export class TonePicker extends LitElement {
     this.textSaturation = 0.35;
     this.baseColor = '#7c3aed';
     this.scheme = 'analog';
+    this._saturationTrackCache = new Map();
   }
 
   render() {
@@ -251,6 +254,7 @@ export class TonePicker extends LitElement {
     const source = hexToHsl(this.baseColor || '#7c3aed');
     const hues = schemeSliderHues(this.baseColor, this.scheme);
     const setter = kind === 'surface' ? this._setSurfaceSaturation : this._setTextSaturation;
+    const previewStyles = this._saturationPreviewStyles(kind, source, hues);
     return html`
       <label class="scheme-saturation-control">
         <span class="grayscale-control-header">
@@ -261,10 +265,10 @@ export class TonePicker extends LitElement {
           class="scheme-saturation-track"
           style="--scheme-saturation-count:${hues.length}"
         >
-          ${hues.map((hue) => html`
+          ${previewStyles.map((style) => html`
             <span
               class="scheme-saturation-preview"
-              style="background:${hslToHex({ h: hue, s: amount * 100, l: source.l })}"
+              style=${style}
               aria-hidden="true"
             ></span>
           `)}
@@ -283,6 +287,55 @@ export class TonePicker extends LitElement {
         </span>
       </label>
     `;
+  }
+
+  _saturationPreviewStyles(kind, source, hues) {
+    // Endpoint colors do not move with the slider being dragged. Caching
+    // prevents complete palette rebuilds for every endpoint and scheme hue
+    // on every input event.
+    const key = [
+      kind,
+      this.baseColor,
+      this.scheme,
+      this.themeMode,
+      this.themeIntensity,
+      kind === 'text' ? this.surfaceSaturation : '',
+    ].join('|');
+    const cached = this._saturationTrackCache.get(kind);
+    if (cached?.key === key) return cached.styles;
+
+    const styles = hues.map((hue) => this._saturationPreviewStyle(hue, kind, source));
+    this._saturationTrackCache.set(kind, { key, styles });
+    return styles;
+  }
+
+  _saturationPreviewStyle(hue, kind, source) {
+    // Match the S/L tracks: each hue runs from fully desaturated to full
+    // chroma across the bar, independent of the current slider position.
+    // The controls are multipliers over the selected base saturation. Seed
+    // each scheme hue with that saturation so the right endpoint corresponds
+    // to a 100% multiplier in the live palette.
+    const seed = hslToHex({ h: hue, s: source.s, l: source.l });
+    const surfaceSaturation = (amount) =>
+      buildPalette(
+        seed,
+        this.scheme,
+        this.themeMode,
+        this.themeIntensity,
+        amount,
+        this.textSaturation
+      ).background;
+    const textSaturation = (amount) =>
+      buildPalette(
+        seed,
+        this.scheme,
+        this.themeMode,
+        this.themeIntensity,
+        this.surfaceSaturation,
+        amount
+      ).text;
+    const colorAt = kind === 'surface' ? surfaceSaturation : textSaturation;
+    return `background:linear-gradient(to right, ${colorAt(0)}, ${colorAt(1)})`;
   }
 
   _renderTonePreview(mode, intensity, surfaceSaturation, textSaturation) {
